@@ -1,77 +1,63 @@
 # Accounting App
 
-React, Express, and PostgreSQL accounting application.
+React, Express, and PostgreSQL accounting application. The local setup runs the frontend and API on your computer and stores data in a PostgreSQL server on your computer.
 
-## Local development
+## Run with local PostgreSQL
 
-1. Create a PostgreSQL database named `accounting_app`.
-2. Copy `server/.env.example` to `server/.env` and update its values.
-3. Copy `client/.env.example` to `client/.env` and update its values.
-4. Install dependencies in both app folders:
+You need Node.js with npm and a PostgreSQL server installed and running.
 
-   ```bash
+1. Create a database named `accounting_app`. Connect to your local PostgreSQL server as an administrator with `psql`:
+
+   ```powershell
+   psql -h 127.0.0.1 -U postgres -d postgres
+   ```
+
+   Then run:
+
+   ```sql
+   CREATE DATABASE accounting_app;
+   ```
+
+   You can also create it in pgAdmin: right-click **Databases**, choose **Create > Database**, and enter `accounting_app`.
+
+2. Copy the example environment files:
+
+   ```powershell
+   Copy-Item server/.env.example server/.env
+   Copy-Item client/.env.example client/.env
+   ```
+
+3. In `server/.env`, set `DB_USER` and `DB_PASSWORD` to a PostgreSQL account that can create tables in `accounting_app`. The example assumes PostgreSQL is listening at `127.0.0.1:5432`; update `DB_HOST` or `DB_PORT` if yours differs. Keep `DB_SSL=false` for a local server. If `DATABASE_URL` is set in this file, remove it for local use because it takes precedence over the `DB_*` settings. The PostgreSQL 18 server in this workspace is configured for port `5433`, so its local `.env` uses that port.
+
+   Set `SESSION_SECRET` to a long random value. Leave `GOOGLE_CLIENT_ID` empty to use the app's local email-and-password sign-in.
+
+4. Install the app dependencies:
+
+   ```powershell
    npm install --prefix server
    npm install --prefix client
    ```
 
-5. Start the API and frontend in separate terminals:
+5. Open two terminals in the project folder and start the API and frontend:
 
-   ```bash
+   ```powershell
    npm run dev --prefix server
+   ```
+
+   ```powershell
    npm run dev --prefix client
    ```
 
-Database migrations run automatically when the API starts.
+6. Open `http://localhost:5173`. The API uses `http://localhost:3000`, and the server automatically applies database migrations on startup.
 
-## Deploy to Render
+The PostgreSQL server must be running whenever you use the app. Your records and login sessions are stored in its local `accounting_app` database and remain there when the app is closed. The app does not need a hosted database. Google sign-in is optional and requires internet access; local email-and-password sign-in does not.
 
-The repository includes `render.yaml`, which creates one web service connected to the Supabase PostgreSQL database. The Express service hosts both the API and the compiled frontend on the same domain, so authentication cookies work without cross-site browser restrictions.
+## Environment settings
 
-1. Push the latest `main` branch to GitHub.
-2. In Render, choose **New > Blueprint**.
-3. Connect `jobouri97/accounting-app` and select its `render.yaml` file.
-4. Enter the Supabase session-pooler connection string for `DATABASE_URL`.
-5. Enter the same Google OAuth client ID for both requested Google environment variables.
-6. Create the Blueprint and wait for the web service to become available.
-7. Open the generated `https://accounting-app-....onrender.com` address.
+`server/.env.example` contains local PostgreSQL settings. You can use either those `DB_*` fields or provide a PostgreSQL `DATABASE_URL`; `DATABASE_URL` takes precedence when both are set. Never put database credentials in `client/.env`.
 
-The first startup automatically creates the database schema and applies every migration. Later deployments apply only new migrations.
+`client/.env.example` points the browser app to the local API. `VITE_GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_ID` can stay blank when using email and password.
 
-## Google login setup
+## Health check
 
-1. In Google Cloud Console, create or select a project and configure its OAuth consent screen.
-2. Create an OAuth 2.0 Client ID for a **Web application**.
-3. Add `http://localhost:5173` to **Authorized JavaScript origins** for local development.
-4. After Render assigns the production URL, add that exact URL to **Authorized JavaScript origins**.
-5. Do not add a trailing slash to either origin.
-
-Use the same client ID for `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`.
-
-## Production configuration
-
-Render configures or requests these values through `render.yaml`:
-
-- `NODE_ENV=production`
-- `DATABASE_URL` from your Supabase session pooler
-- `DB_SSL=true`
-- a generated `SESSION_SECRET`
-- `GOOGLE_CLIENT_ID`
-- `VITE_GOOGLE_CLIENT_ID`
-
-The health check is available at `/api/health`.
-
-## Use Supabase for the database
-
-1. Create a Supabase project.
-2. Open **SQL Editor**, paste all of `server/db/supabase-schema.sql`, and run it.
-3. In **Project Settings > Database**, copy the PostgreSQL connection string. Use the session pooler connection string when the app host does not support IPv6.
-4. Set the server environment variables:
-
-   ```env
-   DATABASE_URL=your-supabase-postgresql-connection-string
-   DB_SSL=true
-   ```
-
-5. Keep the database password and connection string only on the server. Do not add them to the React client environment.
-
-The SQL script blocks the Supabase `anon` and `authenticated` Data API roles because this project authenticates and accesses data through the Express server.
+With the API running, open `http://localhost:3000/api/health`. A healthy server responds with `{"status":"ok"}`.
