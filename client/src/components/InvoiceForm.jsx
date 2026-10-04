@@ -38,10 +38,27 @@ function InvoiceForm({
   const [openProductItemKey, setOpenProductItemKey] = useState(null);
   const [barcodeValue, setBarcodeValue] = useState("");
 
-  const productsById = useMemo(
-    () => new Map(products.map((product) => [Number(product.id), product])),
-    [products]
-  );
+  const productsById = useMemo(() => {
+    const productsMap = new Map(
+      products.map((product) => [Number(product.id), product])
+    );
+
+    for (const item of editingInvoice?.items ?? []) {
+      const productId = Number(item.product_id);
+      if (productsMap.has(productId)) continue;
+
+      productsMap.set(productId, {
+        id: productId,
+        name: item.product_name,
+        purchase_price: item.purchase_price,
+        selling_price: item.selling_price,
+        stock_quantity: 0,
+        is_active: false,
+      });
+    }
+
+    return productsMap;
+  }, [products, editingInvoice]);
 
   const selectedCustomer = customers.find(
     (customer) => customer.id === Number(customerId)

@@ -24,6 +24,12 @@
   min-width: 0;
 }
 
+.products-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+}
+
 .products-header h1 {
   margin: 4px 0 0;
   font-size: 32px;
@@ -58,6 +64,17 @@
   font-size: 24px;
 }
 
+.products-profit-count strong {
+  color: #15803d;
+}
+
+.products-profit-count small {
+  display: block;
+  margin-top: 5px;
+  color: #6b7280;
+  font-size: 11px;
+}
+
 @media (max-width: 600px) {
   .products-page {
     padding: 16px 12px;
@@ -72,10 +89,18 @@
     font-size: 26px;
   }
 
-  .products-count {
+  .products-summary {
     width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .products-count {
     min-width: 0;
     text-align: left;
+  }
+
+  .products-count strong {
+    font-size: 21px;
   }
 }
 
@@ -91,6 +116,10 @@
 
   .products-header h1 {
     font-size: 22px;
+  }
+
+  .products-summary {
+    grid-template-columns: 1fr;
   }
 
   .products-count {

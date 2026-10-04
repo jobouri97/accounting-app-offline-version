@@ -154,7 +154,7 @@ async function lockProducts(client, productIds) {
   if (productIds.length === 0) return [];
 
   const result = await client.query(
-    `SELECT id, name, purchase_price, selling_price, stock_quantity
+    `SELECT id, name, purchase_price, selling_price, stock_quantity, is_active
      FROM products
      WHERE id = ANY($1::int[]) AND user_id = $2
      ORDER BY id
@@ -457,6 +457,13 @@ export async function createInvoice(req, res) {
     }
 
     const products = await lockProducts(client, items.map((item) => item.productId));
+    if (products.some((product) => !product.is_active)) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "Archived products cannot be added to new invoices",
+      });
+    }
+
     const builtInvoice = buildInvoiceItems(items, products);
 
     if (builtInvoice.error) {
@@ -584,6 +591,21 @@ export async function updateInvoice(req, res) {
     if (products.length !== allProductIds.length) {
       await client.query("ROLLBACK");
       return res.status(409).json({ message: "Invoice contains a missing product" });
+    }
+
+    const existingProductIds = new Set(
+      oldItemsResult.rows.map((item) => Number(item.product_id))
+    );
+    const addingArchivedProduct = items.some((item) => {
+      const product = products.find(({ id }) => Number(id) === item.productId);
+      return product && !product.is_active && !existingProductIds.has(item.productId);
+    });
+
+    if (addingArchivedProduct) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "Archived products cannot be added to invoice lines",
+      });
     }
 
     const adjustedProducts = products.map((product) => ({

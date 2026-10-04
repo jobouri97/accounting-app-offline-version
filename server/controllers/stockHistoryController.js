@@ -173,7 +173,7 @@ export async function createStockHistory(req, res) {
         const productResult = await client.query(
             `SELECT id, stock_quantity
        FROM products
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND user_id = $2 AND is_active = TRUE
        FOR UPDATE`,
             [productId, USER_ID]
         );

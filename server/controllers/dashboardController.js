@@ -8,9 +8,9 @@ export async function getDashboard(req, res) {
       await Promise.all([
         db.query(
           `SELECT
-             (SELECT COUNT(*)::int FROM products WHERE user_id = $1) AS product_count,
-             (SELECT COUNT(*)::int FROM products WHERE user_id = $1 AND stock_quantity <= 5) AS low_stock_count,
-             (SELECT COALESCE(SUM(stock_quantity * purchase_price), 0) FROM products WHERE user_id = $1) AS inventory_value,
+             (SELECT COUNT(*)::int FROM products WHERE user_id = $1 AND is_active = TRUE) AS product_count,
+             (SELECT COUNT(*)::int FROM products WHERE user_id = $1 AND is_active = TRUE AND stock_quantity <= 5) AS low_stock_count,
+             (SELECT COALESCE(SUM(stock_quantity * purchase_price), 0) FROM products WHERE user_id = $1 AND is_active = TRUE) AS inventory_value,
              (SELECT COUNT(*)::int FROM customers WHERE user_id = $1) AS customer_count,
              (SELECT COALESCE(SUM(GREATEST(balance, 0)), 0) FROM customers WHERE user_id = $1) AS receivables,
              (SELECT COUNT(*)::int FROM invoices WHERE user_id = $1) AS invoice_count,
@@ -66,7 +66,7 @@ export async function getDashboard(req, res) {
         db.query(
           `SELECT id, name, stock_quantity
              FROM products
-            WHERE user_id = $1 AND stock_quantity <= 5
+            WHERE user_id = $1 AND is_active = TRUE AND stock_quantity <= 5
             ORDER BY stock_quantity ASC, name ASC
             LIMIT 5`,
           [USER_ID]

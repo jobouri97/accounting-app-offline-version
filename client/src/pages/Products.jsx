@@ -27,10 +27,19 @@ const initialPagination = {
   hasNextPage: false,
   hasPreviousPage: false,
 };
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function Products({ onOpenStockHistory }) {
 
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState(initialPagination);
+  const [totalInventoryProfit, setTotalInventoryProfit] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,6 +55,7 @@ function Products({ onOpenStockHistory }) {
 
       setProducts(response.data.products);
       setPagination(response.data.pagination);
+      setTotalInventoryProfit(response.data.summary.totalInventoryProfit);
     } catch (error) {
       console.error("Error loading products:", error);
 
@@ -115,7 +125,7 @@ function Products({ onOpenStockHistory }) {
 
   async function handleDeleteProduct(id) {
     const isConfirmed = window.confirm(
-      "Are you sure you want to delete this product?"
+      "Delete this product? Products with remaining stock or that appear on invoices cannot be deleted."
     );
 
     if (!isConfirmed) {
@@ -144,7 +154,8 @@ function Products({ onOpenStockHistory }) {
       console.error("Error deleting product:", error);
 
       setError(
-        "An error occurred while deleting the product."
+        error.response?.data?.message ||
+          "An error occurred while deleting the product."
       );
     }
   }
@@ -170,6 +181,7 @@ function Products({ onOpenStockHistory }) {
       );
 
       setEditingProduct(null);
+      await loadProducts(currentPage, debouncedSearch);
 
       return {
         success: true,
@@ -198,10 +210,19 @@ function Products({ onOpenStockHistory }) {
             <h1>Products</h1>
           </div>
 
-          <div className="products-count">
-            <span>Total Products</span>
+          <div className="products-summary">
+            <div className="products-count">
+              <span>Total Products</span>
 
-            <strong>{pagination.totalItems}</strong>
+              <strong>{pagination.totalItems}</strong>
+            </div>
+
+            <div className="products-count products-profit-count">
+              <span>Potential Stock Profit</span>
+
+              <strong>{isLoading ? "—" : formatMoney(totalInventoryProfit)}</strong>
+              <small>Sum of (selling − purchase) × stock{debouncedSearch ? " (search results)" : ""}</small>
+            </div>
           </div>
         </header>
 

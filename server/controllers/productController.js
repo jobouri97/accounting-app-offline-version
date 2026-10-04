@@ -46,6 +46,7 @@ export async function getAllProducts(req, res) {
              barcode
            FROM products
            WHERE user_id = $1
+             AND is_active = TRUE
              AND (
                name ILIKE $2
                OR COALESCE(barcode, '') ILIKE $2
@@ -61,9 +62,15 @@ export async function getAllProducts(req, res) {
         ),
 
         db.query(
-          `SELECT COUNT(*)::int AS total
+          `SELECT
+             COUNT(*)::int AS total,
+             COALESCE(
+               SUM((selling_price - purchase_price) * stock_quantity),
+               0
+             ) AS total_inventory_profit
            FROM products
            WHERE user_id = $1
+             AND is_active = TRUE
              AND (
                name ILIKE $2
                OR COALESCE(barcode, '') ILIKE $2
@@ -77,6 +84,9 @@ export async function getAllProducts(req, res) {
 
     res.status(200).json({
       products: productsResult.rows,
+      summary: {
+        totalInventoryProfit: countResult.rows[0].total_inventory_profit,
+      },
       pagination: {
         page,
         pageSize: limit,
@@ -96,7 +106,7 @@ export async function getProductById(req, res) {
     const result = await db.query(
       `SELECT id, name, purchase_price, selling_price, stock_quantity, barcode
        FROM products
-       WHERE id = $1 AND user_id = $2`,
+       WHERE id = $1 AND user_id = $2 AND is_active = TRUE`,
       [productId, USER_ID]
     );
 
@@ -169,7 +179,9 @@ export async function createProduct(req, res) {
 
     const existingProduct = await db.query(
       `SELECT id FROM products
-       WHERE user_id = $1 AND LOWER(name) = LOWER($2)
+       WHERE user_id = $1
+         AND is_active = TRUE
+         AND LOWER(name) = LOWER($2)
        LIMIT 1`,
       [USER_ID, normalizedName]
     );
@@ -289,6 +301,7 @@ export async function updateProduct(req, res) {
     const existingProduct = await db.query(
       `SELECT id FROM products
        WHERE user_id = $1
+         AND is_active = TRUE
          AND LOWER(name) = LOWER($2)
          AND id <> $3
        LIMIT 1`,
@@ -305,7 +318,7 @@ export async function updateProduct(req, res) {
             purchase_price = $2,
             selling_price = $3,
             barcode = $4
-        WHERE id = $5 AND user_id = $6
+        WHERE id = $5 AND user_id = $6 AND is_active = TRUE
         RETURNING
           id,
           user_id,
@@ -345,22 +358,82 @@ export async function updateProduct(req, res) {
 
 export async function deleteProduct(req, res) {
     const productId = req.params.id;
+    const client = await db.connect();
 
-    const result = await db.query(
-      `DELETE FROM products
-       WHERE id = $1 AND user_id = $2
-       RETURNING id`,
-      [productId, USER_ID]
-    );
+    try {
+      await client.query("BEGIN");
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Product not found",
+      const productResult = await client.query(
+        `SELECT id, is_active, stock_quantity
+         FROM products
+         WHERE id = $1 AND user_id = $2
+         FOR UPDATE`,
+        [productId, USER_ID]
+      );
+
+      if (productResult.rows.length === 0 || !productResult.rows[0].is_active) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      const invoiceItemResult = await client.query(
+        `SELECT 1
+         FROM invoice_items
+         WHERE product_id = $1
+         LIMIT 1`,
+        [productId]
+      );
+
+      const stockQuantity = Number(productResult.rows[0].stock_quantity);
+      const hasInvoiceHistory = invoiceItemResult.rows.length > 0;
+
+      if (hasInvoiceHistory || stockQuantity > 0) {
+        const restrictions = [];
+
+        if (stockQuantity > 0) {
+          restrictions.push(
+            `it has ${stockQuantity} item${stockQuantity === 1 ? "" : "s"} in stock`
+          );
+        }
+
+        if (hasInvoiceHistory) {
+          restrictions.push("it appears on one or more invoices");
+        }
+
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          message: `Cannot delete this product because ${restrictions.join(" and ")}.`,
+        });
+      }
+
+      const result = await client.query(
+        `DELETE FROM products
+         WHERE id = $1 AND user_id = $2
+         RETURNING id`,
+        [productId, USER_ID]
+      );
+
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      await client.query("COMMIT");
+      return res.status(200).json({
+        message: "Product deleted successfully",
+        productId: result.rows[0].id,
       });
-    }
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
 
-    res.status(200).json({
-      message: "Product deleted successfully",
-      productId: result.rows[0].id,
-    });
+      if (error.code === "23503") {
+        return res.status(409).json({
+          message: "This product is still in use and could not be deleted.",
+        });
+      }
+
+      throw error;
+    } finally {
+      client.release();
+    }
 }
